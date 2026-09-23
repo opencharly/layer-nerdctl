@@ -1,0 +1,93 @@
+WARNING: charly is a dev/worktree build (not installed at /usr/bin or /usr/local/bin); NOT loading the installed package's plugins from /usr/lib/charly/plugins (they may be built against a different charly version). Set CHARLY_PLUGIN_DIR to load plugins from a custom location.
+
+--- Building check-nerdctl-app ---
+[2/2] STEP 1/27: FROM quay.io/fedora/fedora:43
+[1/2] STEP 1/2: FROM scratch AS layer-nerdctl
+[1/2] STEP 2/2: COPY candy/layer-nerdctl/ /
+--> Using cache 08e83e9abe772eb5f7803c5a9a85df9f7aa9d78814b45b979d1a664764a28e80
+--> 08e83e9abe77
+[2/2] STEP 2/27: RUN { [ -L /usr/local ] && mkdir -p "$(readlink /usr/local)"; mkdir -p /usr/local/bin; } &&     ARCH=$(uname -m) &&     case "$ARCH" in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; esac &&     TASK_URL="https://github.com/go-task/task/releases/latest/download/task_linux_${ARCH}.tar.gz" &&     (curl -fsSL "$TASK_URL" || wget -qO- "$TASK_URL") | tar -xzf - -C /usr/local/bin task
+--> Using cache 3a1c52539c53a8ee6a412b4bdcc67a26d583b005c7d30d664e4c1d5ff0426424
+--> 3a1c52539c53
+[2/2] STEP 3/27: RUN if ! getent passwd 1000 >/dev/null 2>&1; then       LOGIN_SHELL=/bin/sh; [ -x /bin/bash ] && LOGIN_SHELL=/bin/bash;       if command -v useradd >/dev/null 2>&1; then         (getent group 1000 >/dev/null 2>&1 || groupadd -g 1000 user) &&         useradd -m -u 1000 -g 1000 -s "$LOGIN_SHELL" user;       else         (getent group 1000 >/dev/null 2>&1 || addgroup -g 1000 user) &&         adduser -D -h /home/user -u 1000 -G user -s "$LOGIN_SHELL" user;       fi;     fi
+--> Using cache 333a86c9c18f2da10bd95e969f713e4397199eb2c263d95b5b21a8c674d7ab7c
+--> 333a86c9c18f
+[2/2] STEP 4/27: WORKDIR /home/user
+--> Using cache ceae20d5941c398ffb947fc96526b6b70afe6ab5f4bb74b65a86f96679b78fbe
+--> ceae20d5941c
+[2/2] STEP 5/27: ARG TARGETARCH
+--> Using cache ae32f5c98054a6366543a8737d198f021637e0d4835e8ece07ddac48562da07d
+--> ae32f5c98054
+[2/2] STEP 6/27: ENV ARCH=${TARGETARCH}
+--> Using cache 1ac74be00207a592a9e06876e897608e8c814fc5a3ca5cd29b428a10b975d39b
+--> 1ac74be00207
+[2/2] STEP 7/27: ENV NERDCTL_FULL_VERSION="2.1.2"
+--> Using cache 5ced4910d7d2ec156774f730400914b4e6ce153bd835081116c695135122ccf0
+--> 5ced4910d7d2
+[2/2] STEP 8/27: RUN --mount=type=bind,from=layer-nerdctl,source=/,target=/ctx --mount=type=cache,id=charly-tmp-npm-cache-uid1000,dst=/tmp/npm-cache,uid=1000,gid=1000 --mount=type=cache,id=charly-var-cache-charly-nerdctl-full,dst=/var/cache/charly-nerdctl-full,sharing=locked sh -c 'SH=/bin/sh; [ -x /bin/bash ] && SH=/bin/bash; exec "$SH"' sh <<'OVCMD' (BUILD_ARCH=$(uname -m)...)
+--> Using cache 97e956f43c1c976762e2180ac5f312f27630d211285315ad3626bb6b310e4947
+--> 97e956f43c1c
+[2/2] STEP 9/27: RUN mkdir -p /etc/nerdctl /etc/cni/net.d && chmod 0755 /etc/nerdctl /etc/cni/net.d
+--> Using cache b9780a09f3aefc779fa3323d983c0c33aba3a3b6899d9b77129750bc7bc4f607
+--> b9780a09f3ae
+[2/2] STEP 10/27: COPY --chmod=0644 .build/check-nerdctl-app/_inline/layer-nerdctl/ff8332b3ea9a053ad45a341736d37d7748d5d7634468306117fd671229ee4764 /etc/nerdctl/nerdctl.toml
+--> Using cache 7d519aea5ba79dee7df8bbab5edb30840ad4eca8c748b89afeb9a2402c91160f
+--> 7d519aea5ba7
+[2/2] STEP 11/27: COPY --chmod=0644 .build/check-nerdctl-app/_inline/layer-nerdctl/2b8bd7213d30681202040c5103666d752ce74e8f4606c3e5614aa548caa67879 /etc/cni/net.d/charly.conflist
+--> Using cache 231f0ff772b05f5ca905299dbb5d16b9391bfa389e1c5b8d90cffcf459715cd7
+--> 231f0ff772b0
+[2/2] STEP 12/27: USER 1000
+--> Using cache 7599d7a789c3b1ce4f3eedf068eaf9a6dcb47bea742295a0c5e23b6ebd8a5940
+--> 7599d7a789c3
+[2/2] STEP 13/27: LABEL ai.opencharly.version="2026.266.1730"
+--> Using cache 6629a5d2a8679f301ba6b53e7d4d31cc6a393426ef8294e5c3a099311ca8c7b2
+--> 6629a5d2a867
+[2/2] STEP 14/27: LABEL ai.opencharly.box="check-nerdctl-app"
+--> Using cache cc7d145e8612b7128436cddfac0cd52eb19b09f7b675231801943bbc26e791c7
+--> cc7d145e8612
+[2/2] STEP 15/27: LABEL ai.opencharly.uid="1000"
+--> Using cache 78391bc15adb3007e03de54d76f50b5dc16653d7f4b023a85620695b48232279
+--> 78391bc15adb
+[2/2] STEP 16/27: LABEL ai.opencharly.gid="1000"
+--> Using cache 6127dabfaae06ceaca55b39d83025eb7d2b6ce623431810d43d4d58573a349e5
+--> 6127dabfaae0
+[2/2] STEP 17/27: LABEL ai.opencharly.user="user"
+--> Using cache 6ebbef677940b879614015f64d2b0dc94ea562d34a237f09779afcf3866be5c7
+--> 6ebbef677940
+[2/2] STEP 18/27: LABEL ai.opencharly.home="/home/user"
+--> Using cache f62440a381298e0872889de8517d7c5765e86dc2b09254b4182e01f9fb34a9a0
+--> f62440a38129
+[2/2] STEP 19/27: LABEL ai.opencharly.registry="ghcr.io/example"
+--> Using cache ac482936252bbb6d713e4a2db9e1e2f226df9d3518ce62fabf5b2df5b60ec179
+--> ac482936252b
+[2/2] STEP 20/27: LABEL ai.opencharly.platform.format='["rpm"]'
+--> Using cache 29ac23fa31a4bc594957ffcb1536aa502dbc5746752d6907a2d8d6a69af433ed
+--> 29ac23fa31a4
+[2/2] STEP 21/27: LABEL ai.opencharly.security='{"cap_add":["ALL"],"devices":["/dev/fuse","/dev/net/tun"],"security_opt":["unmask=/proc/*"]}'
+--> Using cache 5688c3ac19a77afcef9650a16007c806d44be617d2e056b536ec8eb7acd6966c
+--> 5688c3ac19a7
+[2/2] STEP 22/27: LABEL ai.opencharly.description='{"candy":[{"origin":"candy:layer-nerdctl","description":"nerdctl (containerd CLI) with the full rootless containerd + buildkit +\nCNI stack. Native distro packages on Arch/CachyOS/Omarchy; on Fedora,\nDebian and Ubuntu the pinned nerdctl-full tarball (sha256-verified)\nsupplies nerdctl + containerd + containerd-fuse-overlayfs-grpc + CNI +\nbuildkit + rootlesskit. Writes /etc/nerdctl/nerdctl.toml, the rootless\ncontainerd/buildkit units, the CNI `charly` network and the cgroup2-rw +\niptables-nft posture for nested use. ADE checks: nerdctl version, nerdctl\ninfo, the rootless probe, and the fuse-overlayfs snapshotter.\n","plan":[{"run":"install the pinned nerdctl-full tarball on non-native distros","plugin":"command","id":"nerdctl-full-tarball","plugin_input":{"command":"set -euo pipefail\ncase \"$(. /etc/os-release; echo \"${ID:-}${ID_LIKE:-}\")\" in\n  *arch*|*alpine*) exit 0 ;;   # native packages already provide the stack\nesac\nver=\"${NERDCTL_FULL_VERSION}\"\narch=\"${ARCH}\"\nurl=\"https://github.com/containerd/nerdctl/releases/download/v${ver}/nerdctl-full-${ver}-linux-${arch}.tar.gz\"\ncurl -fsSL \"${url}\" -o /tmp/nerdctl-full.tar.gz\ncurl -fsSL \"${url}.sha256sum\" -o /tmp/nerdctl-full.sha256 || true\nif [ -s /tmp/nerdctl-full.sha256 ]; then\n  ( cd /tmp \u0026\u0026 sha256sum -c nerdctl-full.sha256 --ignore-missing 2\u003e/dev/null || true )\nfi\ntar -C /usr/local -xzf /tmp/nerdctl-full.tar.gz\nrm -f /tmp/nerdctl-full.tar.gz /tmp/nerdctl-full.sha256\n"},"run_as":"root","cache":["/var/cache/charly-nerdctl-full"],"intent_do":"act"},{"check":"nerdctl version exits 0","plugin":"command","plugin_input":{"command":"nerdctl version"},"intent_do":"assert","exit_status":0},{"check":"the nerdctl binary is present on PATH","plugin":"command","plugin_input":{"command":"command -v nerdctl"},"intent_do":"assert","exit_status":0},{"check":"the nerdctl.toml declares the charly namespace + buildkit host","plugin":"command","plugin_input":{"command":"grep -q '\''namespace = \"charly\"'\'' /etc/nerdctl/nerdctl.toml"},"intent_do":"assert","exit_status":0},{"check":"the charly CNI network conflist is present","plugin":"file","plugin_input":{"file":"/etc/cni/net.d/charly.conflist"},"intent_do":"assert"}]}],"box":[{"origin":"box:check-nerdctl-app","description":"Disposable bed image for the layer-nerdctl R10 — a Fedora base composing\nlayer-nerdctl, so the nested-pod posture is emitted and can be asserted.\n"}]}'
+--> Using cache 25ab88409295061cd5aa13d999875b54d30a57679459185808194570d39e70c5
+--> 25ab88409295
+[2/2] STEP 23/27: LABEL ai.opencharly.skill='[{"family":"distros","name":"layer-nerdctl","owner":"layer-nerdctl","description":"nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack — native Arch/Alpine packages, the pinned sha256 nerdctl-full tarball on Fedora/Debian/Ubuntu, nerdctl.toml + the charly CNI conflist + the nested-pod posture. Use when working with the nerdctl engine, the layer-nerdctl candy, or engine: nerdctl deploys.","content":"# layer-nerdctl\n\nnerdctl (the containerd CLI) plus the rootless containerd + buildkit + CNI\nstack, as ONE candy. Composed by a box that wants the opt-in `engine: nerdctl`\nengine.\n\n## What it installs\n\n- **Native packages** on Arch/CachyOS/Omarchy and Alpine: `nerdctl`,\n  `cni-plugins`, `rootlesskit`, `slirp4netns`, `buildkit`, `fuse-overlayfs`,\n  `crun`, `iptables-nft` (arch) / `iptables` (alpine).\n- **Non-native distros** (Fedora/Debian/Ubuntu) install the pinned,\n  sha256-verified `nerdctl-full` tarball (step `nerdctl-full-tarball`), which\n  supplies nerdctl + containerd + `containerd-fuse-overlayfs-grpc` + CNI +\n  buildkit + rootlesskit in one archive.\n- `/etc/nerdctl/nerdctl.toml` (charly namespace + rootless buildkit host) and\n  the `charly` CNI network conflist at `/etc/cni/net.d/charly.conflist`.\n- The **nested-pod posture**: userns-scoped `cap_add: ALL`, `/dev/fuse`,\n  `/dev/net/tun`, `unmask=/proc/*`.\n\n## Engine capability\n\nThe `engine: nerdctl` word is served by `opencharly/plugin-nerdctl`\n(out-of-process) or compiled in; every engine op delegates to\n`container.InvokeEngineOp(\"nerdctl\", …)` in the spec module. nerdctl has no\n`--keep-id`, so the start-plan runs the workload as `--user 0:0` (uid 0 == the\nhost user under rootless), guaranteeing uid-identical sharing; a non-zero uid\nneeds the subuid caveat.\n\n## Use when\n\nWorking with the nerdctl engine, the layer-nerdctl candy, or an\n`engine: nerdctl` deploy.\n"}]'
+--> Using cache 39516ebadd80644383e08ff00682152276f46ec296c88ddd08c3742433afe964
+--> 39516ebadd80
+[2/2] STEP 24/27: LABEL ai.opencharly.status="testing"
+--> Using cache 43c66a4936420e81ffd1b679911ad58b28c6de4d1d9a0ad74aa8b1ce9422192a
+--> 43c66a493642
+[2/2] STEP 25/27: LABEL ai.opencharly.check_level="noagent"
+--> Using cache 1ca9a51fd9cc2c244a84607a7a0a02f97d5765758b86f686fd62c00fb4da9fc1
+--> 1ca9a51fd9cc
+[2/2] STEP 26/27: LABEL ai.opencharly.info='Disposable bed image for the layer-nerdctl R10 — a Fedora base composing; layer-nerdctl: nerdctl (containerd CLI) with the full rootless containerd + buildkit +'
+--> Using cache 8f7d666b42bb37b964d2ca48ff0a7f49d3d28f3c7d1539a8d5ec1719907a7d3a
+--> 8f7d666b42bb
+[2/2] STEP 27/27: LABEL ai.opencharly.candy_version='{"layer-nerdctl":"2026.266.1425"}'
+--> Using cache 3f0cc48d47f91b20413594a41892b24827894c786ecf58e1846351052afdb972
+[2/2] COMMIT ghcr.io/example/check-nerdctl-app:check-nerdctl-nested-2026.266.1801
+--> 3f0cc48d47f9
+Successfully tagged ghcr.io/example/check-nerdctl-app:check-nerdctl-nested-2026.266.1801
+Successfully tagged ghcr.io/example/check-nerdctl-nested:2026.266.1759
+Successfully tagged ghcr.io/example/check-nerdctl-nested:2026.266.1749
+Successfully tagged ghcr.io/example/check-nerdctl-nested:2026.266.1748
+Successfully tagged ghcr.io/example/check-nerdctl-app:check-nerdctl-nested-2026.266.1747
+3f0cc48d47f91b20413594a41892b24827894c786ecf58e1846351052afdb972

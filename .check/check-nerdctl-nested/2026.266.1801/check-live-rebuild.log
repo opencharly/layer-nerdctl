@@ -1,0 +1,17 @@
+WARNING: charly is a dev/worktree build (not installed at /usr/bin or /usr/local/bin); NOT loading the installed package's plugins from /usr/lib/charly/plugins (they may be built against a different charly version). Set CHARLY_PLUGIN_DIR to load plugins from a custom location.
+Resolved @github.com/opencharly/plugin-deploy-pod -> v2026.266.1057 (latest tag)
+Resolved @github.com/opencharly/plugin-vm -> v2026.266.1235 (latest tag)
+plugin github.com/opencharly/plugin-deploy-pod/candy/plugin-deploy-pod: served from /home/atrawog/.cache/charly/plugins/github.com_opencharly_plugin-deploy-pod_candy_plugin-deploy-pod-32201456c20eec21 (build stamp ff61df62ae33c859); source /home/atrawog/.cache/charly/repos/github.com/opencharly/plugin-deploy-pod@v2026.266.1057/candy/plugin-deploy-pod
+Image: check-nerdctl-app (container: charly-check-nerdctl-nested)
+  SKIP  run install the pinned nerdctl-full tarball on non-native distros  [nerdctl-full-tarball]  skipped — verify-only mode (mutating step)
+  PASS  check nerdctl version exits 0  [plan:candy:layer-nerdctl:1]  exit=0
+  PASS  check the nerdctl binary is present on PATH  [plan:candy:layer-nerdctl:2]  exit=0
+  PASS  check the nerdctl.toml declares the charly namespace + buildkit host  [plan:candy:layer-nerdctl:3]  exit=0
+  PASS  check the charly CNI network conflist is present  [plan:candy:layer-nerdctl:4]  ok
+  PASS  check the fuse device is present for the fuse-overlayfs snapshotter  [plan:deploy-local:check-nerdctl-nested:0]  ok
+  PASS  check the tun device is present for the CNI bridge  [plan:deploy-local:check-nerdctl-nested:1]  ok
+  PASS  check the exact full capability mask is retained (cap_add ALL)  [plan:deploy-local:check-nerdctl-nested:2]  exit=0
+  PASS  check the pod is userns-scoped (uid 0 inside maps to the host user, not host root)  [plan:deploy-local:check-nerdctl-nested:3]  exit=0
+  PASS  check nerdctl is on PATH in the nested pod  [plan:deploy-local:check-nerdctl-nested:4]  exit=0
+
+10 steps: 9 passed, 0 failed, 1 skipped
