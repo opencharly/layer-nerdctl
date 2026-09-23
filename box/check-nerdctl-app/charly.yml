@@ -1,0 +1,12 @@
+# check-nerdctl-app — the disposable bed image for the layer-nerdctl R10: a Fedora
+# base composing the nerdctl stack candy, so the nested-pod posture (cap_add ALL,
+# /dev/fuse, /dev/net/tun, unmask /proc/*) is emitted onto a real pod.
+check-nerdctl-app:
+    candy:
+        version: 2026.266.1730
+        description: |
+            Disposable bed image for the layer-nerdctl R10 — a Fedora base composing
+            layer-nerdctl, so the nested-pod posture is emitted and can be asserted.
+        base: quay.io/fedora/fedora:43
+        candy:
+            - layer-nerdctl

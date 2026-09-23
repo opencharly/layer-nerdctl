@@ -26,3 +26,28 @@ defaults:
   platform:
     - linux/amd64
   build: [rpm]
+
+# check-nerdctl-nested — the R10 bed for the layer-nerdctl nested-pod posture: a
+# disposable pod composing the nerdctl stack, asserting the emitted devices +
+# capability posture on a FRESH deploy. Fails without the security: block.
+check-nerdctl-nested:
+    pod:
+        image: check-nerdctl-app
+        disposable: true
+        lifecycle: test
+        description: |
+            The nested-pod R10 bed: deploy a disposable pod composing layer-nerdctl and
+            assert the outer-pod posture the inner rootless engine needs — /dev/fuse,
+            /dev/net/tun, and the userns-scoped full capability set (cap_add: ALL).
+        plan:
+            - check: the fuse device is present for the fuse-overlayfs snapshotter
+              file: /dev/fuse
+            - check: the tun device is present for the CNI bridge
+              file: /dev/net/tun
+            - check: the userns-scoped full capability set is retained (cap_add ALL)
+              command: grep -qE '^CapEff:\s+0000003fffffffff|^CapEff:\s+[0-9a-f]{16}' /proc/self/status
+              exit_status: 0
+            - check: nerdctl is on PATH in the nested pod
+              command: command -v nerdctl
+              exit_status: 0
+
