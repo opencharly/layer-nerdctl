@@ -10,3 +10,9 @@ check-nerdctl-app:
         base: quay.io/fedora/fedora:43
         candy:
             - layer-nerdctl
+        plan:
+            - check: nerdctl is installed by the composed layer-nerdctl candy
+              command: command -v nerdctl
+              exit_status: 0
+            - check: the nerdctl.toml written by the candy is present
+              file: /etc/nerdctl/nerdctl.toml
