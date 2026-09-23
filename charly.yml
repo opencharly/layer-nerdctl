@@ -1,0 +1,28 @@
+# charly.yml — unified project root: the single file a project needs.
+# See https://github.com/opencharly/charly for documentation.
+#
+# Box (image) and candy (layer) definitions are DISCOVERED per name:
+#   box/<name>/charly.yml   — one box per directory
+#   candy/<name>/charly.yml — one candy per directory
+# The default distro/builder/init build vocabulary is EMBEDDED in the charly
+# binary; declare distro:/builder:/init:/resource: here only to EXTEND or
+# OVERRIDE it.
+#
+# Cross-kind name reuse is permitted — a single name (e.g. my-app) MAY exist
+# simultaneously as a candy, a box, a pod, a vm, a kubernetes, a local, AND a deploy
+# entry. charly verbs disambiguate by command context.
+
+version: 2026.261.1747
+
+discover:
+  - path: box
+    recursive: true
+  - path: candy
+    recursive: true
+
+defaults:
+  registry: ghcr.io/example
+  tag: auto
+  platform:
+    - linux/amd64
+  build: [rpm]

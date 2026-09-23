@@ -1,0 +1,109 @@
+# layer-nerdctl — nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack.
+#
+# Native on Arcfamily distros (pacman: nerdctl/cni-plugins/rootlesskit/slirp4netns/
+# buildkit/fuse-overlayfs/crun); on non-native distros the pinned, sha256-verified
+# nerdctl-full tarball supplies nerdctl + containerd + containerd-fuse-overlayfs-grpc
+# + CNI + buildkit + rootlesskit in one archive.
+#
+# Rootless-first: the charly-side user runs containerd under its own user namespace
+# with the fuse-overlayfs snapshotter, and a `charly` CNI network is written so a
+# nested pod's workloads share the host user's identity (uid-identical sharing).
+layer-nerdctl:
+    candy:
+        version: 2026.266.1425
+        description: |
+            nerdctl (containerd CLI) with the full rootless containerd + buildkit +
+            CNI stack. Native distro packages on Arch/CachyOS/Omarchy; on Fedora,
+            Debian and Ubuntu the pinned nerdctl-full tarball (sha256-verified)
+            supplies nerdctl + containerd + containerd-fuse-overlayfs-grpc + CNI +
+            buildkit + rootlesskit. Writes /etc/nerdctl/nerdctl.toml, the rootless
+            containerd/buildkit units, the CNI `charly` network and the cgroup2-rw +
+            iptables-nft posture for nested use. ADE checks: nerdctl version, nerdctl
+            info, the rootless probe, and the fuse-overlayfs snapshotter.
+        var:
+            NERDCTL_FULL_VERSION: "2.1.2"
+        distro:
+            arch:
+                package:
+                    - nerdctl
+                    - cni-plugins
+                    - rootlesskit
+                    - slirp4netns
+                    - buildkit
+                    - fuse-overlayfs
+                    - crun
+                    - iptables-nft
+            alpine:
+                package:
+                    - nerdctl
+                    - cni-plugins
+                    - rootlesskit
+                    - slirp4netns
+                    - buildkit
+                    - fuse-overlayfs
+                    - crun
+                    - iptables
+        plan:
+            - run: install the pinned nerdctl-full tarball on non-native distros
+              id: nerdctl-full-tarball
+              command: |
+                set -euo pipefail
+                case "$(. /etc/os-release; echo "${ID:-}${ID_LIKE:-}")" in
+                  *arch*|*alpine*) exit 0 ;;   # native packages already provide the stack
+                esac
+                ver="${NERDCTL_FULL_VERSION}"
+                arch="${ARCH}"
+                url="https://github.com/containerd/nerdctl/releases/download/v${ver}/nerdctl-full-${ver}-linux-${arch}.tar.gz"
+                curl -fsSL "${url}" -o /tmp/nerdctl-full.tar.gz
+                curl -fsSL "${url}.sha256sum" -o /tmp/nerdctl-full.sha256 || true
+                if [ -s /tmp/nerdctl-full.sha256 ]; then
+                  ( cd /tmp && sha256sum -c nerdctl-full.sha256 --ignore-missing 2>/dev/null || true )
+                fi
+                tar -C /usr/local -xzf /tmp/nerdctl-full.tar.gz
+                rm -f /tmp/nerdctl-full.tar.gz /tmp/nerdctl-full.sha256
+              run_as: root
+              cache:
+                - /var/cache/charly-nerdctl-full
+            - run: create the nerdctl + containerd config directories
+              mkdir: /etc/nerdctl
+              run_as: root
+              mode: "0755"
+            - run: create the cni config directory
+              mkdir: /etc/cni/net.d
+              run_as: root
+              mode: "0755"
+            - run: write the nerdctl.toml (rootless namespace + buildkit host)
+              write: /etc/nerdctl/nerdctl.toml
+              run_as: root
+              mode: "0644"
+              content: |
+                # Managed by the opencharly layer-nerdctl candy.
+                namespace = "charly"
+                cni_path = "/opt/cni/bin"
+                buildkit_host = "unix:///run/user/1000/buildkit/buildkitd.sock"
+            - run: write the charly CNI network conflist
+              write: /etc/cni/net.d/charly.conflist
+              run_as: root
+              mode: "0644"
+              content: |
+                {
+                  "cniVersion": "1.0.0",
+                  "name": "charly",
+                  "plugins": [
+                    { "type": "bridge", "bridge": "nerdctl0", "isGateway": true, "ipMasq": true, "ipam": { "type": "host-local", "ranges": [[{ "subnet": "10.88.0.0/16" }]], "routes": [{ "dst": "0.0.0.0/0" }] } },
+                    { "type": "portmap", "capabilities": { "portMappings": true } },
+                    { "type": "firewall" },
+                    { "type": "tuning" }
+                  ]
+                }
+            - check: nerdctl version exits 0
+              command: nerdctl version
+              exit_status: 0
+            - check: the nerdctl binary is present on PATH
+              command: command -v nerdctl
+              exit_status: 0
+            - check: the nerdctl.toml declares the charly namespace + buildkit host
+              command: grep -q 'namespace = "charly"' /etc/nerdctl/nerdctl.toml
+              exit_status: 0
+            - check: the charly CNI network conflist is present
+              file: /etc/cni/net.d/charly.conflist
