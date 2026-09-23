@@ -22,6 +22,19 @@ layer-nerdctl:
             info, the rootless probe, and the fuse-overlayfs snapshotter.
         var:
             NERDCTL_FULL_VERSION: "2.1.2"
+        security:
+            # The nested-pod posture for the OUTER pod (userns-scoped): the inner
+            # rootless engine needs the full capability set WITHIN its user namespace,
+            # /dev/fuse for the fuse-overlayfs snapshotter, /dev/net/tun for the CNI
+            # bridge, and the /proc/* unmask so the inner runtime can re-mount /proc.
+            # These are userns-scoped — the inner engine's userns-root is NOT host root.
+            cap_add:
+                - ALL
+            devices:
+                - /dev/fuse
+                - /dev/net/tun
+            security_opt:
+                - unmask=/proc/*
         distro:
             arch:
                 package:
