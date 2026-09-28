@@ -10,7 +10,6 @@
 # nested pod's workloads share the host user's identity (uid-identical sharing).
 layer-nerdctl:
     candy:
-        version: 2026.266.1425
         description: |
             nerdctl (containerd CLI) with the full rootless containerd + buildkit +
             CNI stack. Native distro packages on Arch/CachyOS/Omarchy; on Fedora,
