@@ -12,7 +12,6 @@
 # simultaneously as a candy, a box, a pod, a vm, a kubernetes, a local, AND a deploy
 # entry. charly verbs disambiguate by command context.
 
-version: 2026.261.1747
 
 discover:
   - path: box
