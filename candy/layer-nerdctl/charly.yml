@@ -10,7 +10,6 @@
 # nested pod's workloads share the host user's identity (uid-identical sharing).
 layer-nerdctl:
     candy:
-        version: 2026.266.1425
         description: |
             nerdctl (containerd CLI) with the full rootless containerd + buildkit +
             CNI stack. Native distro packages on Arch/CachyOS/Omarchy; on Fedora,
@@ -120,7 +119,6 @@ layer-nerdctl:
               exit_status: 0
             - check: the charly CNI network conflist is present
               file: /etc/cni/net.d/charly.conflist
-
 # ---- HARNESS SKILL ----
 layer-nerdctl-skill:
     skill:
@@ -162,4 +160,3 @@ layer-nerdctl-skill:
 
             Working with the nerdctl engine, the layer-nerdctl candy, or an
             `engine: nerdctl` deploy.
-
