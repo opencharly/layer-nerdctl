@@ -17,7 +17,9 @@ layer-nerdctl:
             supplies nerdctl + containerd + containerd-fuse-overlayfs-grpc + CNI +
             buildkit + rootlesskit. Writes /etc/nerdctl/nerdctl.toml, the rootless
             containerd/buildkit units, the CNI `charly` network and the cgroup2-rw +
-            iptables-nft posture for nested use. ADE checks: nerdctl version, nerdctl
+            iptables-nft posture for nested use. The BuildKit socket is deliberately NOT
+            pinned here: it is a runtime value resolved through the ONE roots resolver
+            ($XDG_RUNTIME_DIR/charly/buildkitd.sock). ADE checks: nerdctl version, nerdctl
             info, the rootless probe, and the fuse-overlayfs snapshotter.
         var:
             NERDCTL_FULL_VERSION: "2.1.2"
@@ -84,15 +86,22 @@ layer-nerdctl:
               mkdir: /etc/cni/net.d
               run_as: root
               mode: "0755"
-            - run: write the nerdctl.toml (rootless namespace + buildkit host)
+            - run: write the nerdctl.toml (rootless namespace + CNI path)
               write: /etc/nerdctl/nerdctl.toml
               run_as: root
               mode: "0644"
               content: |
                 # Managed by the opencharly layer-nerdctl candy.
+                #
+                # No `buildkit_host` here, deliberately. This file is a STATIC image-build
+                # artefact, and the BuildKit socket is a RUNTIME value: charly resolves it
+                # through the ONE roots resolver — buildkitdrive.SocketPath() over
+                # storekit.Dir(storekit.RootRuntime), i.e. $XDG_RUNTIME_DIR/charly/buildkitd.sock.
+                # A literal here could only hardcode one uid, and the deviation this drops is
+                # the exact one buildkitdrive/paths.go names: "it breaks on any uid other than
+                # 1000, and two conventions for one socket is one too many."
                 namespace = "charly"
                 cni_path = "/opt/cni/bin"
-                buildkit_host = "unix:///run/user/1000/buildkit/buildkitd.sock"
             - run: write the charly CNI network conflist
               write: /etc/cni/net.d/charly.conflist
               run_as: root
@@ -114,8 +123,14 @@ layer-nerdctl:
             - check: the nerdctl binary is present on PATH
               command: command -v nerdctl
               exit_status: 0
-            - check: the nerdctl.toml declares the charly namespace + buildkit host
+            - check: the nerdctl.toml declares the charly namespace
               command: grep -q 'namespace = "charly"' /etc/nerdctl/nerdctl.toml
+              exit_status: 0
+            - check: the toml carries NO uid-pinned buildkit_host KEY (the resolver owns that slot)
+              # The pattern is ANCHORED to a key assignment, not the bare substring: the file
+              # explains in a comment why the key is absent, and a loose substring match would
+              # fire on that explanation. A probe must isolate the object, not the word.
+              command: '! grep -qE "^[[:space:]]*buildkit_host[[:space:]]*=" /etc/nerdctl/nerdctl.toml'
               exit_status: 0
             - check: the charly CNI network conflist is present
               file: /etc/cni/net.d/charly.conflist
@@ -143,7 +158,7 @@ layer-nerdctl-skill:
               sha256-verified `nerdctl-full` tarball (step `nerdctl-full-tarball`), which
               supplies nerdctl + containerd + `containerd-fuse-overlayfs-grpc` + CNI +
               buildkit + rootlesskit in one archive.
-            - `/etc/nerdctl/nerdctl.toml` (charly namespace + rootless buildkit host) and
+            - `/etc/nerdctl/nerdctl.toml` (charly namespace + CNI path) and
               the `charly` CNI network conflist at `/etc/cni/net.d/charly.conflist`.
             - The **nested-pod posture**: userns-scoped `cap_add: ALL`, `/dev/fuse`,
               `/dev/net/tun`, `unmask=/proc/*`.
