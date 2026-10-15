@@ -126,8 +126,11 @@ layer-nerdctl:
             - check: the nerdctl.toml declares the charly namespace
               command: grep -q 'namespace = "charly"' /etc/nerdctl/nerdctl.toml
               exit_status: 0
-            - check: the toml carries NO uid-pinned buildkit_host (the resolver owns that slot)
-              command: '! grep -q "buildkit_host" /etc/nerdctl/nerdctl.toml'
+            - check: the toml carries NO uid-pinned buildkit_host KEY (the resolver owns that slot)
+              # The pattern is ANCHORED to a key assignment, not the bare substring: the file
+              # explains in a comment why the key is absent, and a loose substring match would
+              # fire on that explanation. A probe must isolate the object, not the word.
+              command: '! grep -qE "^[[:space:]]*buildkit_host[[:space:]]*=" /etc/nerdctl/nerdctl.toml'
               exit_status: 0
             - check: the charly CNI network conflist is present
               file: /etc/cni/net.d/charly.conflist
