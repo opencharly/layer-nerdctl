@@ -1,5 +1,7 @@
 # Build artefacts
 .build/
+# The VM bed's rendered disk + seed (charly vm build) — never authored, never tracked.
+/image/
 
 # Editor / OS
 .DS_Store

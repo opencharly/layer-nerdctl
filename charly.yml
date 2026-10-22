@@ -53,3 +53,253 @@ check-nerdctl-nested:
               command: command -v nerdctl
               exit_status: 0
 
+# ===== The rootless checklist bed (CONTAINERD-IMAGES.md §1.2; CONTAINERD.md §2 + §4) =====
+#
+# The runtime half of the §4 checklist needs a real systemd. A pod runs supervisord, so a
+# `systemctl --user` assertion there is meaningless: this bed is a DISPOSABLE VM, the
+# substrate a rootless host instance actually belongs to. The candy supplies the static
+# half (helpers, subuid/subgid, delegation drop-in, D-Bus, slirp4netns, the units); the
+# plan runs the upstream setuptool over those units and asserts the running result.
+#
+# The candy is applied by the VM deploy's own `add_candy:`, NOT a nested `local:` member:
+# a non-namespaced bed's nested member ref is mis-converted by the plugin-check pin this
+# charly carries (`bed.key` -> `bed/key`), and `add_candy` is the substrate's own path.
+nerdctl-rootless-vm-base:
+    vm:
+        source:
+            # A Fedora cloud guest, not Arch: this layer's non-native arm installs the
+            # pinned nerdctl-full tarball (and the CNI plugins from /usr/local/libexec/cni),
+            # so the bed proves that path end to end. A dnf install also keeps the running
+            # kernel's module tree, so no pacman IgnorePkg hold (and its "ignoring package
+            # upgrade" warning) is needed.
+            kind: cloud_image
+            url: https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2
+            base_user: fedora
+            distro: fedora
+        backend: libvirt
+        disk_size: 20G
+        ram: 4G
+        cpu: 2
+        machine: q35
+        firmware: bios
+        ssh:
+            port_auto: true
+            key_source: generate
+        cloud_init:
+            timezone: UTC
+            package:
+                - sudo
+
+check-nerdctl-rootless:
+    vm:
+        from: nerdctl-rootless-vm-base
+        disposable: true
+        lifecycle: test
+        # The candy is applied by the deploy substrate itself, so the units it writes are
+        # in place before the plan's ABSENCE step runs and nothing is started yet.
+        add_candy:
+            - layer-nerdctl
+        description: |
+            The §4 rootless checklist on a disposable guest, in the three-step shape:
+            ABSENCE (no rootless containerd is running and the units are inactive),
+            PERFORM (daemon-reload, linger, and the upstream setuptool install over the
+            candy-written units), PRESENCE (`nerdctl info` names rootless, the uidmap
+            helpers resolve, /dev/fuse opens, and the units are active). The system
+            socket's inode/mtime is recorded before the daemon starts and compared after,
+            and the rootless daemon's real listen address is asserted to be the user
+            socket, never the system one.
+        plan:
+            # ===== STEP 1: ABSENCE — the control the presence step needs to mean anything =====
+            # The VM deploy's add_candy applied the candy but did not start anything: this
+            # asserts the pre-setup state, and it is idempotent because it stops the units
+            # first (the plan runs at deploy-add AND at check-live).
+            - check: no rootless containerd is active before the setup, and the system socket is recorded
+              id: rootless-absent-before-setup
+              context: [runtime]
+              command: |
+                set -eu
+                systemctl --user stop buildkit.service containerd.service
+                if systemctl --user is-active --quiet containerd.service; then
+                  echo "containerd.service is already active before the setup step" >&2; exit 1
+                fi
+                if systemctl --user is-active --quiet buildkit.service; then
+                  echo "buildkit.service is already active before the setup step" >&2; exit 1
+                fi
+                # DAEMON SAFETY, recorded BEFORE any daemon starts: the venue's ROOTFUL
+                # system listeners. A test daemon that binds the default socket replaces
+                # them; the presence step compares these exact values. `sudo` is used
+                # because /run/containerd is root-only: an unreadable file must not read
+                # as "absent".
+                sys=/run/containerd/containerd.sock
+                {
+                  sudo -n stat -Lc '%d:%i %Y' "$sys" 2>/dev/null || echo absent
+                  sudo -n stat -Lc '%d:%i %Y' "$sys.ttrpc" 2>/dev/null || echo absent
+                } > /tmp/nerdctl-rootless-system-socket.before
+                cat /tmp/nerdctl-rootless-system-socket.before
+                if nerdctl info >/dev/null 2>&1; then
+                  echo "a containerd daemon already answers before the setup step" >&2; exit 1
+                fi
+                echo "absence confirmed: no rootless containerd, no answering client"
+            # ===== STEP 2: PERFORM — the settings the setuptool needs, then the setuptool =====
+            - check: the setup performs — daemon-reload, linger, and the upstream setuptool install
+              id: rootless-perform-setup
+              context: [runtime]
+              command: |
+                set -u
+                fail() { echo "perform FAILED: $*" >&2; exit 1; }
+                # Bounded readiness, with a deadline and a real failure: never a blind
+                # retry. The setuptool's own install gives a unit three seconds, which a
+                # cold guest can exceed (measured on the Fedora venue: the unit came up
+                # after the setuptool had already given up). The unit is the candy's, so
+                # start it through systemd and wait for the CLIENT to answer.
+                wait_active() {
+                  unit="$1"
+                  i=0
+                  while ! systemctl --user is-active --quiet "$unit"; do
+                    i=$((i+1))
+                    [ "$i" -le 150 ] || {
+                      systemctl --user status "$unit" --no-pager 2>&1 | head -20 >&2
+                      journalctl --user -u "$unit" -n 30 --no-pager 2>&1 | tail -15 >&2
+                      fail "$unit did not become active"; }
+                    sleep 0.2
+                  done
+                }
+                # 1. Apply the candy-written user@.service delegation drop-in (CONTAINERD.md §2).
+                sudo -n systemctl daemon-reload || fail "system daemon-reload failed"
+                # 2. Linger, so the user manager and the units it owns survive the session
+                #    that installs them (CONTAINERD.md §4.1).
+                sudo -n loginctl enable-linger "$(id -un)" || fail "loginctl enable-linger failed"
+                systemctl --user daemon-reload || fail "user daemon-reload failed"
+                # 3. Start the candy-written units and wait for the daemon to ANSWER.
+                systemctl --user start containerd.service || fail "could not start containerd.service"
+                wait_active containerd.service
+                i=0
+                while ! nerdctl info >/dev/null 2>&1; do
+                  i=$((i+1))
+                  [ "$i" -le 150 ] || fail "containerd is active but nerdctl info does not answer"
+                  sleep 0.2
+                done
+                systemctl --user start buildkit.service || fail "could not start buildkit.service"
+                wait_active buildkit.service
+                # 4. The upstream installer, over the units it would otherwise write. It
+                #    finds them and skips writing ("File already exists, skipping"), sees
+                #    them active, and enables them; install-buildkit is the second half.
+                containerd-rootless-setuptool.sh install || fail "containerd-rootless-setuptool.sh install failed"
+                containerd-rootless-setuptool.sh install-buildkit || fail "install-buildkit failed"
+                echo "perform complete"
+            # ===== STEP 3: PRESENCE — assertions only the change can produce =====
+            - check: nerdctl reports the rootless security option, the units are active, and the helpers resolve
+              id: rootless-presence
+              context: [runtime]
+              command: |
+                set -u
+                # Every assertion below names itself on failure: a bare exit status is
+                # not a diagnosis (the first run's failure was one line of stderr).
+                fail() { echo "presence FAILED: $*" >&2; exit 1; }
+                d=$(mktemp -d)
+                trap 'rm -rf "$d"' EXIT
+
+                say() { echo "presence: $*"; }
+
+                say "units are active"
+                # Bounded readiness with a deadline, not a blind retry: the fresh-update
+                # phase re-extracts the tarball over a RUNNING buildkitd, so the unit can
+                # be mid-restart for a moment. A unit that never comes back is reported
+                # with its status and journal.
+                wait_unit() {
+                  unit="$1"
+                  i=0
+                  while ! systemctl --user is-active --quiet "$unit"; do
+                    i=$((i+1))
+                    [ "$i" -le 100 ] || {
+                      systemctl --user status "$unit" --no-pager 2>&1 | head -25 >&2
+                      journalctl --user -u "$unit" -n 40 --no-pager 2>&1 | tail -20 >&2
+                      fail "$unit did not become active"; }
+                    sleep 0.2
+                  done
+                }
+                wait_unit containerd.service
+                wait_unit buildkit.service
+                # The candy wrote these units and the setuptool skipped them; the marker
+                # distinguishes the layer's units from a setuptool-written pair.
+                for u in containerd.service buildkit.service; do
+                  grep -qx '# Managed by the opencharly layer-nerdctl candy.' "$HOME/.config/systemd/user/$u" \
+                    || fail "$u is not the candy-written unit"
+                done
+
+                say "nerdctl reports the rootless security option"
+                # nerdctl 2.4 prints a bare `rootless` line in the Security Options block;
+                # older builds print `name=rootless`. Accept both — the assertion is the
+                # option, not one release's spelling.
+                nerdctl info > "$d/info.txt" 2>&1 || { cat "$d/info.txt" >&2; fail "nerdctl info failed"; }
+                sed -n '/Security Options:/,/^[A-Z]/p' "$d/info.txt" | grep -Eq '^[[:space:]]+(name=)?rootless$' \
+                  || { cat "$d/info.txt" >&2; fail "SecurityOptions does not report rootless"; }
+                nerdctl info | grep -i 'storage driver' | grep -qi overlay \
+                  || fail "the storage driver is not overlay"
+
+                say "the uidmap helpers resolve and a UID/GID map succeeds"
+                command -v newuidmap >/dev/null || fail "newuidmap is not on PATH"
+                command -v newgidmap >/dev/null || fail "newgidmap is not on PATH"
+                # The exact A/B CONTAINERD.md §2 measured: rootlesskit execs the helpers.
+                if ! out=$(rootlesskit --state-dir="$d/rl" true 2>&1); then
+                  echo "$out" >&2; fail "rootlesskit could not set up the UID/GID map"
+                fi
+
+                say "/dev/fuse opens"
+                [ -c /dev/fuse ] || fail "/dev/fuse is not a character device"
+                exec 3<>/dev/fuse || fail "cannot open /dev/fuse"
+                exec 3>&-
+
+                say "user D-Bus and the slirp4netns driver"
+                systemctl --user is-active dbus.socket >/dev/null || {
+                  systemctl --user status dbus.socket --no-pager 2>&1 | head -20 >&2
+                  fail "the user dbus.socket is not active"; }
+                envline=$(systemctl --user show containerd.service -p Environment 2>&1) \
+                  || fail "systemctl show containerd.service failed"
+                printf '%s\n' "$envline" | grep -q 'CONTAINERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns' \
+                  || { printf '%s\n' "$envline" >&2; fail "the unit does not pin slirp4netns"; }
+                ps -ww -eo args | grep -q 'rootlesskit .*--net=slirp4netns' \
+                  || { ps -ww -eo args | grep rootlesskit >&2; fail "no rootlesskit process uses slirp4netns"; }
+
+                say "daemon safety: the real listen address is the USER socket"
+                # The rootless containerd binds /run/containerd/containerd.sock INSIDE its
+                # mount namespace, where /run/containerd is the user's directory; `ss -lx`
+                # therefore shows that namespace path. Prove the object it names is the
+                # USER socket, not the host's rootful one, by device:inode across
+                # /proc/<pid>/root.
+                [ -S "$XDG_RUNTIME_DIR/containerd/containerd.sock" ] \
+                  || fail "no user containerd socket at $XDG_RUNTIME_DIR/containerd/containerd.sock"
+                pid=$(pgrep -u "$(id -u)" -x containerd | head -1)
+                [ -n "$pid" ] || { ps -ww -eo pid,user,args | grep containerd >&2; fail "no containerd process for uid $(id -u)"; }
+                user_obj=$(stat -Lc '%d:%i' "$XDG_RUNTIME_DIR/containerd/containerd.sock") \
+                  || fail "cannot stat the user containerd socket"
+                ns_obj=$(stat -Lc '%d:%i' "/proc/$pid/root/run/containerd/containerd.sock") \
+                  || fail "cannot stat the daemon's namespace socket"
+                [ "$user_obj" = "$ns_obj" ] \
+                  || fail "the daemon's namespace socket ($ns_obj) is not the user socket ($user_obj)"
+                ss -lx | grep -F '/run/containerd/containerd.sock' >/dev/null \
+                  || { ss -lx >&2; fail "the rootless daemon has no listen entry"; }
+                sys=/run/containerd/containerd.sock
+                if sudo -n test -e "$sys"; then
+                  sys_obj=$(sudo -n stat -Lc '%d:%i' "$sys")
+                  [ "$sys_obj" != "$user_obj" ] \
+                    || fail "the rootless daemon owns the HOST system socket ($sys_obj)"
+                fi
+                after="$( { sudo -n stat -Lc '%d:%i %Y' "$sys" 2>/dev/null || echo absent; sudo -n stat -Lc '%d:%i %Y' "$sys.ttrpc" 2>/dev/null || echo absent; } )"
+                before="$(cat /tmp/nerdctl-rootless-system-socket.before)"
+                [ "$before" = "$after" ] \
+                  || fail "the system socket changed while the rootless daemon ran: before=$before after=$after"
+                if [ "$after" = "absent absent" ]; then
+                  echo "system socket: absent before and after (the rootless daemon never bound it)"
+                else
+                  echo "system socket inode/mtime unchanged: $after"
+                fi
+
+                say "a real container runs under the delegated manager"
+                # --net=host is the ROOTLESSKIT netns (slirp4netns): the engine's runtime
+                # path is what this assertion proves, and it keeps the probe independent of
+                # the guest kernel's netfilter module tree (the CNI path is asserted where
+                # it belongs: the conflist check and the plugins-at-cni_path check).
+                runout=$(timeout 300 nerdctl run --rm --net=host --memory 64m alpine echo ok 2>&1) || {
+                  echo "$runout" >&2; fail "nerdctl run failed"; }
+                printf '%s\n' "$runout" | grep -qx ok || { printf '%s\n' "$runout" >&2; fail "nerdctl run did not print ok"; }

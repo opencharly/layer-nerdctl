@@ -7,6 +7,10 @@ check-nerdctl-app:
             Disposable bed image for the layer-nerdctl R10 — a Fedora base composing
             layer-nerdctl, so the nested-pod posture is emitted and can be asserted.
         base: quay.io/fedora/fedora:43
+        # The image's distro tag chain. Without it `img.DistroDef` is nil and the generator
+        # emits NO declarative package installs, so a candy's `distro.fedora.package:` list
+        # silently does nothing (the tarball still installs, which is how this went unseen).
+        distro: ["fedora:43", fedora]
         candy:
             - layer-nerdctl
         plan:
