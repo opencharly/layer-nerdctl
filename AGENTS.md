@@ -10,11 +10,15 @@ bed image in `box/check-nerdctl-app/charly.yml`. The candy carries the embedded
 
 Canonical files:
 
-- `charly.yml` — the project root: `discover:`, `defaults:`, and the
-  `check-nerdctl-nested:` disposable `pod:` R10 bed.
+- `charly.yml` — the project root: `discover:`, `defaults:`, the
+  `check-nerdctl-nested:` disposable `pod:` bed (nested-pod posture), and the
+  `check-nerdctl-rootless:` disposable `vm:` bed (the CONTAINERD.md §2/§4
+  rootless checklist, whose runtime half needs a real systemd).
 - `candy/layer-nerdctl/charly.yml` — the `layer-nerdctl:` candy entity (the
   `NERDCTL_FULL_VERSION` var, the `security:` posture, the plan steps, the
   `check:` assertions) and the `layer-nerdctl-skill:` skill entity.
+- `.agents/skills/layer-nerdctl/SKILL.md` — the skill body (authored content,
+  discovered from the repo root).
 - `box/check-nerdctl-app/charly.yml` — the disposable bed image composing the candy.
 - `README.md` — user overview only; never agent guidance.
 
@@ -44,6 +48,9 @@ Canonical files:
   `pod:` bed in the root `charly.yml` — a FRESH deploy asserting `/dev/fuse`,
   `/dev/net/tun`, the full `CapEff` mask, the userns uid map, and `nerdctl` on
   PATH. It fails without the `security:` block.
+- The R10 for the rootless checklist is `check-nerdctl-rootless:` — a disposable
+  `vm:` bed, because the checklist's runtime half (`systemctl --user`, linger,
+  the units) cannot be proven in a supervisord pod.
 
 ## Modify this repo
 

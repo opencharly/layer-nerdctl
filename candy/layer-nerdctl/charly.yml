@@ -1,26 +1,33 @@
 # layer-nerdctl — nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack.
 #
-# Native on Arcfamily distros (pacman: nerdctl/cni-plugins/rootlesskit/slirp4netns/
-# buildkit/fuse-overlayfs/crun); on non-native distros the pinned, sha256-verified
-# nerdctl-full tarball supplies nerdctl + containerd + containerd-fuse-overlayfs-grpc
-# + CNI + buildkit + rootlesskit in one archive.
+# Native on Arcfamily distros (pacman: nerdctl/containerd/cni-plugins/rootlesskit/
+# slirp4netns/buildkit/fuse-overlayfs/crun/shadow/dbus); on non-native distros the
+# pinned, FATALLY sha256-verified nerdctl-full tarball supplies nerdctl + containerd +
+# containerd-fuse-overlayfs-grpc + CNI + buildkit + rootlesskit in one archive.
 #
-# Rootless-first: the charly-side user runs containerd under its own user namespace
-# with the fuse-overlayfs snapshotter, and a `charly` CNI network is written so a
-# nested pod's workloads share the host user's identity (uid-identical sharing).
+# Rootless-first: the charly-side user runs containerd under its own user namespace, and
+# a `charly` CNI network is written so a nested pod's workloads share the host user's
+# identity (uid-identical sharing). The static half of CONTAINERD.md §2/§4 lives here as
+# plan steps + checks; the runtime half (linger, the setuptool install, the first start)
+# is the `check-nerdctl-rootless` bed's three-step shape.
 layer-nerdctl:
     candy:
         description: |
             nerdctl (containerd CLI) with the full rootless containerd + buildkit +
-            CNI stack. Native distro packages on Arch/CachyOS/Omarchy; on Fedora,
-            Debian and Ubuntu the pinned nerdctl-full tarball (sha256-verified)
-            supplies nerdctl + containerd + containerd-fuse-overlayfs-grpc + CNI +
-            buildkit + rootlesskit. Writes /etc/nerdctl/nerdctl.toml, the rootless
-            containerd/buildkit units, the CNI `charly` network and the cgroup2-rw +
-            iptables-nft posture for nested use. The BuildKit socket is deliberately NOT
+            CNI stack. Native distro packages on Arch/CachyOS/Omarchy and Alpine; on
+            Fedora, Debian and Ubuntu the pinned nerdctl-full tarball — FATALLY
+            sha256-verified, never an advisory check — supplies nerdctl + containerd +
+            containerd-fuse-overlayfs-grpc + CNI + buildkit + rootlesskit. Writes
+            /etc/nerdctl/nerdctl.toml (containerd `namespace = "default"`), the CNI
+            `charly` network, the rootless containerd/buildkit USER UNITS, and the static
+            half of the CONTAINERD.md §2/§4 checklist: the newuidmap/newgidmap helpers,
+            the /etc/subuid + /etc/subgid ranges, the user@.service delegation drop-in,
+            slirp4netns as the network driver, and the user D-Bus. Linger, the
+            setuptool run and the units' first start are the runtime half, asserted by
+            the check-nerdctl-rootless bed. The BuildKit socket is deliberately NOT
             pinned here: it is a runtime value resolved through the ONE roots resolver
-            ($XDG_RUNTIME_DIR/charly/buildkitd.sock). ADE checks: nerdctl version, nerdctl
-            info, the rootless probe, and the fuse-overlayfs snapshotter.
+            ($XDG_RUNTIME_DIR/charly/buildkitd.sock). ADE checks: nerdctl version, the
+            fatal checksum, the helpers, the subuid ranges, the units, and the toml.
         var:
             NERDCTL_FULL_VERSION: "2.1.2"
         security:
@@ -39,7 +46,11 @@ layer-nerdctl:
         distro:
             arch:
                 package:
+                    # nerdctl depends on containerd on Arch, but the units below name
+                    # containerd-rootless.sh's own package contract, so it is declared:
+                    # a distro whose nerdctl does not pull containerd must still get it.
                     - nerdctl
+                    - containerd
                     - cni-plugins
                     - rootlesskit
                     - slirp4netns
@@ -47,9 +58,15 @@ layer-nerdctl:
                     - fuse-overlayfs
                     - crun
                     - iptables-nft
+                    # newuidmap/newgidmap: rootlesskit execs them for the UID/GID map
+                    # (CONTAINERD.md §2). The setuptool never checks these two.
+                    - shadow
+                    # The user D-Bus socket the rootless unit requires (Requires=dbus.socket).
+                    - dbus
             alpine:
                 package:
                     - nerdctl
+                    - containerd
                     - cni-plugins
                     - rootlesskit
                     - slirp4netns
@@ -57,8 +74,66 @@ layer-nerdctl:
                     - fuse-overlayfs
                     - crun
                     - iptables
+                    - shadow
+                    - dbus
+            fedora:
+                package:
+                    # shadow-utils carries newuidmap/newgidmap; dbus-daemon carries the
+                    # user dbus.socket the rootless unit requires.
+                    - shadow-utils
+                    - dbus-daemon
+                    - slirp4netns
+                    - fuse-overlayfs
+            debian:
+                package:
+                    - uidmap
+                    - dbus-user-session
+                    - slirp4netns
+                    - fuse-overlayfs
+            ubuntu:
+                package:
+                    - uidmap
+                    - dbus-user-session
+                    - slirp4netns
+                    - fuse-overlayfs
         plan:
-            - run: install the pinned nerdctl-full tarball on non-native distros
+            - run: write the nerdctl-full checksum verifier (one implementation, fatal by construction)
+              id: nerdctl-full-verify-script
+              write: /usr/local/libexec/charly/verify-nerdctl-full.sh
+              run_as: root
+              mode: "0755"
+              content: |
+                #!/bin/sh
+                # Verify one nerdctl-full archive against a sha256sum file (the release's
+                # SHA256SUMS, or the one line extracted from it for this archive).
+                #
+                # FATAL by construction: no `--ignore-missing` (which makes a filename
+                # mismatch exit 0) and no `|| true` (which makes a mismatch advisory).
+                # The archive and the checksum file must share a directory, because the
+                # checksum line names the archive it was published for.
+                set -eu
+                archive="$1"
+                sums="$2"
+                if [ ! -s "$sums" ]; then
+                    echo "verify-nerdctl-full: empty or missing checksum file: $sums" >&2
+                    exit 1
+                fi
+                if [ ! -f "$archive" ]; then
+                    echo "verify-nerdctl-full: missing archive: $archive" >&2
+                    exit 1
+                fi
+                archive_dir=$(CDPATH= cd -- "$(dirname -- "$archive")" && pwd)
+                archive_name=$(basename -- "$archive")
+                sums_name=$(basename -- "$sums")
+                cd "$archive_dir"
+                # Require that the checksum file actually names THIS archive: a checksum
+                # file for a different asset must not pass by naming nothing.
+                if ! grep -Eq "[[:space:]]\*?${archive_name}$" "$sums_name"; then
+                    echo "verify-nerdctl-full: $sums_name does not name $archive_name" >&2
+                    exit 1
+                fi
+                exec sha256sum -c "$sums_name"
+            - run: install the pinned nerdctl-full tarball on non-native distros, with a fatal checksum
               id: nerdctl-full-tarball
               command: |
                 set -euo pipefail
@@ -67,17 +142,72 @@ layer-nerdctl:
                 esac
                 ver="${NERDCTL_FULL_VERSION}"
                 arch="${ARCH}"
-                url="https://github.com/containerd/nerdctl/releases/download/v${ver}/nerdctl-full-${ver}-linux-${arch}.tar.gz"
-                curl -fsSL "${url}" -o /tmp/nerdctl-full.tar.gz
-                curl -fsSL "${url}.sha256sum" -o /tmp/nerdctl-full.sha256 || true
-                if [ -s /tmp/nerdctl-full.sha256 ]; then
-                  ( cd /tmp && sha256sum -c nerdctl-full.sha256 --ignore-missing 2>/dev/null || true )
-                fi
-                tar -C /usr/local -xzf /tmp/nerdctl-full.tar.gz
-                rm -f /tmp/nerdctl-full.tar.gz /tmp/nerdctl-full.sha256
+                tarball="nerdctl-full-${ver}-linux-${arch}.tar.gz"
+                release="https://github.com/containerd/nerdctl/releases/download/v${ver}"
+                url="${release}/${tarball}"
+                work="$(mktemp -d /tmp/nerdctl-full.XXXXXX)"
+                # The release publishes ONE SHA256SUMS file, not per-asset .sha256sum files
+                # (a `${url}.sha256sum` fetch is a 404, which is why the old step's `|| true`
+                # made the whole check vacuous). Extract the ONE line for this archive and
+                # verify against it; an absent line leaves an empty file, which the verifier
+                # rejects.
+                curl -fsSL "${release}/SHA256SUMS" -o "${work}/SHA256SUMS"
+                grep -E "[[:space:]]${tarball}$" "${work}/SHA256SUMS" > "${work}/${tarball}.sha256sum"
+                curl -fsSL "${url}" -o "${work}/${tarball}"
+                /usr/local/libexec/charly/verify-nerdctl-full.sh "${work}/${tarball}" "${work}/${tarball}.sha256sum"
+                tar -C /usr/local -xzf "${work}/${tarball}"
+                rm -rf "${work}"
               run_as: root
-              cache:
-                - /var/cache/charly-nerdctl-full
+            - run: delegate the uid/gid ranges rootlesskit maps through newuidmap/newgidmap
+              id: rootless-subuid
+              run_as: root
+              command: |
+                set -eu
+                # CONTAINERD.md §2: `user:100000:65536` in /etc/subuid AND /etc/subgid.
+                # Resolve the image user from its UID rather than hardcoding a name: the
+                # user is `user` on some distros and `arch` on the cloud images.
+                u="$(getent passwd 1000 | cut -d: -f1)"
+                if [ -z "$u" ]; then
+                  echo "layer-nerdctl: no uid-1000 user to delegate the rootless ranges to" >&2
+                  exit 1
+                fi
+                for f in /etc/subuid /etc/subgid; do
+                  touch "$f"
+                  if ! grep -qx "${u}:100000:65536" "$f"; then
+                    printf '%s:100000:65536\n' "$u" >> "$f"
+                  fi
+                done
+            - run: delegate the cgroup controllers resource limits need to the user manager
+              id: rootless-delegate-controllers
+              write: /etc/systemd/system/user@.service.d/delegate.conf
+              run_as: root
+              mode: "0644"
+              content: |
+                # Managed by the opencharly layer-nerdctl candy (CONTAINERD.md §2).
+                [Service]
+                Delegate=cpu cpuset io memory pids
+            - run: expose the CNI plugins at the ONE cni_path the toml declares
+              id: rootless-cni-path
+              run_as: root
+              command: |
+                set -eu
+                # nerdctl.toml names /opt/cni/bin. Arch's cni-plugins package already
+                # installs there; the nerdctl-full tarball extracts to
+                # /usr/local/libexec/cni, and a distro package may use /usr/lib/cni or
+                # /usr/libexec/cni. Link every real plugin to the ONE declared path
+                # instead of writing a distro-specific cni_path (one spelling).
+                mkdir -p /opt/cni/bin
+                for d in /usr/local/libexec/cni /usr/lib/cni /usr/libexec/cni; do
+                  [ -d "$d" ] || continue
+                  for f in "$d"/*; do
+                    [ -f "$f" ] || continue
+                    b=$(basename "$f")
+                    [ -e "/opt/cni/bin/$b" ] || ln -s "$f" "/opt/cni/bin/$b"
+                  done
+                done
+                for p in bridge portmap firewall tuning host-local; do
+                  [ -x "/opt/cni/bin/$p" ] || { echo "missing CNI plugin $p at /opt/cni/bin" >&2; exit 1; }
+                done
             - run: create the nerdctl + containerd config directories
               mkdir: /etc/nerdctl
               run_as: root
@@ -86,12 +216,15 @@ layer-nerdctl:
               mkdir: /etc/cni/net.d
               run_as: root
               mode: "0755"
-            - run: write the nerdctl.toml (rootless namespace + CNI path)
+            - run: write the nerdctl.toml (default containerd namespace + CNI path)
               write: /etc/nerdctl/nerdctl.toml
               run_as: root
               mode: "0644"
               content: |
                 # Managed by the opencharly layer-nerdctl candy.
+                #
+                # `namespace = "default"` is the ONE spelling the programme uses. The
+                # retired `charly` value is gone: one namespace, no per-layer name.
                 #
                 # No `buildkit_host` here, deliberately. This file is a STATIC image-build
                 # artefact, and the BuildKit socket is a RUNTIME value: charly resolves it
@@ -100,7 +233,7 @@ layer-nerdctl:
                 # A literal here could only hardcode one uid, and the deviation this drops is
                 # the exact one buildkitdrive/paths.go names: "it breaks on any uid other than
                 # 1000, and two conventions for one socket is one too many."
-                namespace = "charly"
+                namespace = "default"
                 cni_path = "/opt/cni/bin"
             - run: write the charly CNI network conflist
               write: /etc/cni/net.d/charly.conflist
@@ -117,14 +250,85 @@ layer-nerdctl:
                     { "type": "tuning" }
                   ]
                 }
+            - run: write the rootless containerd user unit
+              id: rootless-containerd-unit
+              write: ${HOME}/.config/systemd/user/containerd.service
+              run_as: "${USER}"
+              mode: "0644"
+              content: |
+                # Managed by the opencharly layer-nerdctl candy.
+                #
+                # The rootless containerd unit, from containerd-rootless-setuptool.sh
+                # install's own template, with one deliberate difference: ExecStart goes
+                # through /usr/bin/env so the SAME unit works whether the wrapper is at
+                # /usr/local/bin (nerdctl-full on Fedora/Debian/Ubuntu) or /usr/bin (the
+                # Arch/Alpine packages).
+                #
+                # CONTAINERD_ROOTLESS_ROOTLESSKIT_NET pins slirp4netns, the documented
+                # default (CONTAINERD.md §4.3). bypass4netns and pasta are OPTIONS
+                # documented in the skill; they are not set here.
+                [Unit]
+                Description=containerd (Rootless)
+                Requires=dbus.socket
+
+                [Service]
+                Environment=PATH=/usr/local/bin:/usr/bin:/usr/sbin:/sbin
+                Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns
+                Environment=CONTAINERD_ROOTLESS_ROOTLESSKIT_FLAGS=
+                ExecStart=/usr/bin/env containerd-rootless.sh
+                ExecReload=/bin/kill -s HUP $MAINPID
+                TimeoutSec=0
+                RestartSec=2
+                Restart=always
+                StartLimitBurst=3
+                StartLimitInterval=60s
+                LimitNOFILE=infinity
+                LimitNPROC=infinity
+                LimitCORE=infinity
+                TasksMax=infinity
+                Delegate=yes
+                Type=simple
+                KillMode=mixed
+
+                [Install]
+                WantedBy=default.target
+            - run: write the rootless buildkit user unit
+              id: rootless-buildkit-unit
+              write: ${HOME}/.config/systemd/user/buildkit.service
+              run_as: "${USER}"
+              mode: "0644"
+              content: |
+                # Managed by the opencharly layer-nerdctl candy.
+                #
+                # The rootless BuildKit unit, from install-buildkit's own template: it
+                # enters containerd's rootless user/mount/net namespace through the
+                # setuptool's nsenter verb.
+                [Unit]
+                Description=BuildKit (Rootless)
+                PartOf=containerd.service
+
+                [Service]
+                Environment=PATH=/usr/local/bin:/usr/bin:/usr/sbin:/sbin
+                ExecStart=/usr/bin/env containerd-rootless-setuptool.sh nsenter -- buildkitd --oci-worker=true --oci-worker-rootless=true --containerd-worker=false --oci-worker-net=bridge
+                ExecReload=/bin/kill -s HUP $MAINPID
+                RestartSec=2
+                Restart=always
+                Type=simple
+                KillMode=mixed
+
+                [Install]
+                WantedBy=default.target
             - check: nerdctl version exits 0
               command: nerdctl version
               exit_status: 0
             - check: the nerdctl binary is present on PATH
               command: command -v nerdctl
               exit_status: 0
-            - check: the nerdctl.toml declares the charly namespace
-              command: grep -q 'namespace = "charly"' /etc/nerdctl/nerdctl.toml
+            - check: the nerdctl.toml declares the default containerd namespace
+              command: grep -qx 'namespace = "default"' /etc/nerdctl/nerdctl.toml
+              exit_status: 0
+            - check: the retired charly namespace is gone from nerdctl.toml (one spelling only)
+              command: '! grep -qE "^[[:space:]]*namespace[[:space:]]*=[[:space:]]*\"charly\"" /etc/nerdctl/nerdctl.toml'
               exit_status: 0
             - check: the toml carries NO uid-pinned buildkit_host KEY (the resolver owns that slot)
               # The pattern is ANCHORED to a key assignment, not the bare substring: the file
@@ -134,6 +338,78 @@ layer-nerdctl:
               exit_status: 0
             - check: the charly CNI network conflist is present
               file: /etc/cni/net.d/charly.conflist
+            - check: the CNI plugins the conflist names resolve at the toml's cni_path
+              command: |
+                for p in bridge portmap firewall tuning host-local; do
+                  [ -x "/opt/cni/bin/$p" ] || { echo "missing CNI plugin $p at /opt/cni/bin" >&2; exit 1; }
+                done
+              exit_status: 0
+            - check: the uidmap helpers rootlesskit execs are on PATH (the setuptool never checks them)
+              command: |
+                p=$(command -v newuidmap) && q=$(command -v newgidmap)
+                [ -n "$p" ] && [ -n "$q" ]
+              exit_status: 0
+            - check: /etc/subuid and /etc/subgid delegate the uid-1000 user's rootless range
+              command: |
+                u=$(getent passwd 1000 | cut -d: -f1)
+                grep -qx "${u}:100000:65536" /etc/subuid
+                grep -qx "${u}:100000:65536" /etc/subgid
+              exit_status: 0
+            - check: the user manager carries the delegation drop-in for cpuset and io
+              command: grep -qx 'Delegate=cpu cpuset io memory pids' /etc/systemd/system/user@.service.d/delegate.conf
+              exit_status: 0
+            - check: the user D-Bus the rootless unit requires is installed
+              command: command -v dbus-daemon
+              exit_status: 0
+            - check: slirp4netns, the rootless network driver, is installed
+              command: command -v slirp4netns
+              exit_status: 0
+            - check: the rootless wrapper and setuptool are installed
+              command: |
+                a=$(command -v containerd-rootless.sh) && b=$(command -v containerd-rootless-setuptool.sh)
+                [ -n "$a" ] && [ -n "$b" ]
+              exit_status: 0
+            - check: the candy wrote the rootless containerd and buildkit user units
+              command: |
+                home=$(getent passwd 1000 | cut -d: -f6)
+                for u in containerd.service buildkit.service; do
+                  f="${home}/.config/systemd/user/${u}"
+                  [ -f "$f" ] || { echo "missing ${f}" >&2; exit 1; }
+                  grep -qx '# Managed by the opencharly layer-nerdctl candy.' "$f" || {
+                    echo "${f} is not the candy-written unit" >&2; exit 1; }
+                done
+              exit_status: 0
+            - check: the written user units parse as systemd units (N/A on a non-systemd distro)
+              command: |
+                if ! command -v systemd-analyze >/dev/null 2>&1; then
+                  echo "N/A: this distro has no systemd, so the systemd-only rootless instance does not apply"
+                  exit 0
+                fi
+                home=$(getent passwd 1000 | cut -d: -f6)
+                systemd-analyze --user verify "${home}/.config/systemd/user/containerd.service" "${home}/.config/systemd/user/buildkit.service"
+              exit_status: 0
+            - check: the checksum verifier REJECTS a corrupted archive (a test that can fail)
+              command: |
+                set -eu
+                d=$(mktemp -d)
+                trap 'rm -rf "$d"' EXIT
+                printf 'payload' > "$d/asset.tar.gz"
+                ( cd "$d" && sha256sum asset.tar.gz > asset.tar.gz.sha256sum )
+                /usr/local/libexec/charly/verify-nerdctl-full.sh "$d/asset.tar.gz" "$d/asset.tar.gz.sha256sum" >/dev/null
+                printf 'corrupt' > "$d/asset.tar.gz"
+                if /usr/local/libexec/charly/verify-nerdctl-full.sh "$d/asset.tar.gz" "$d/asset.tar.gz.sha256sum" >/dev/null 2>&1; then
+                  echo "a corrupted archive passed the checksum verification" >&2
+                  exit 1
+                fi
+              exit_status: 0
+            - check: /dev/fuse is a character device that opens for the fuse-overlayfs fallback
+              context: [runtime]
+              command: |
+                set -eu
+                [ -c /dev/fuse ] || { echo "/dev/fuse is not a character device" >&2; exit 1; }
+                exec 3<>/dev/fuse
+                exec 3>&-
+              exit_status: 0
 
 # ---- HARNESS SKILL ----
 layer-nerdctl-skill:
@@ -141,4 +417,4 @@ layer-nerdctl-skill:
         name: layer-nerdctl
         family: distros
         owner: layer-nerdctl
-        description: "nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack — native Arch/Alpine packages, the pinned sha256 nerdctl-full tarball on Fedora/Debian/Ubuntu, nerdctl.toml + the charly CNI conflist + the nested-pod posture. Use when working with the nerdctl engine, the layer-nerdctl candy, or engine: nerdctl deploys."
+        description: "nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack — native Arch/Alpine packages, the pinned FATALLY sha256-verified nerdctl-full tarball on Fedora/Debian/Ubuntu, nerdctl.toml with namespace=default, the charly CNI conflist, the written rootless containerd/buildkit user units, the CONTAINERD.md §2/§4 checklist (uidmap helpers, subuid/subgid, delegation, /dev/fuse, user D-Bus, slirp4netns), and the nested-pod posture. Use when working with the nerdctl engine, the layer-nerdctl candy, or engine: nerdctl deploys."
