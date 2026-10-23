@@ -414,7 +414,13 @@ layer-nerdctl:
 # ---- HARNESS SKILL ----
 layer-nerdctl-skill:
     skill:
+        # ROUTING only. The skill's prose lives in
+        # `.agents/skills/layer-nerdctl/SKILL.md` (its frontmatter `description:`
+        # and its body) — the node's inline copy was the TRANSITIONAL in-line form,
+        # and an inline copy that disagrees with the file is a HARD ERROR for the
+        # corpus generator (`skill %q: the node's inline `description:` and its
+        # file's frontmatter disagree`). The file is the source of record; the node
+        # keeps the routing the consumers need (family, owner).
         name: layer-nerdctl
         family: distros
         owner: layer-nerdctl
-        description: "nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack — native Arch/Alpine packages, the pinned FATALLY sha256-verified nerdctl-full tarball on Fedora/Debian/Ubuntu, nerdctl.toml with namespace=default, the charly CNI conflist, the written rootless containerd/buildkit user units, the CONTAINERD.md §2/§4 checklist (uidmap helpers, subuid/subgid, delegation, /dev/fuse, user D-Bus, slirp4netns), and the nested-pod posture. Use when working with the nerdctl engine, the layer-nerdctl candy, or engine: nerdctl deploys."
