@@ -24,11 +24,12 @@ Canonical files:
 
 ## Load these skills first (R0)
 
-- `/charly-distros:layer-nerdctl` — the owning skill. The nerdctl engine, the
-  `layer-nerdctl` candy, the nested-pod posture, and `engine: nerdctl` deploys.
+- `/charly-distros:layer-nerdctl` — the owning skill. The containerd engine
+  (driven through the nerdctl CLI), the `layer-nerdctl` candy, the nested-pod
+  posture, and `engine: containerd` deploys.
   Load before editing or troubleshooting the layer.
 - `/charly-internals:plugin-nerdctl` — the out-of-tree engine plugin that serves
-  `engine: nerdctl`.
+  `engine: containerd`.
 - `/charly-image:layer` — the candy authoring reference (`charly.yml` schema,
   `plan:` step verbs incl. `mkdir:`/`write:`/`check:`, per-distro `distro:` arms,
   package/repo sections, and service declarations). Load before editing any
@@ -54,10 +55,11 @@ Canonical files:
 
 ## Modify this repo
 
-- Edit the `layer-nerdctl:` candy entity AND the `layer-nerdctl-skill:` skill
-  entity in `candy/layer-nerdctl/charly.yml` together. The skill is the projected
-  usage source, so a behaviour change not mirrored in the skill leaves the corpus
-  stale.
+- Edit the `layer-nerdctl:` candy entity in `candy/layer-nerdctl/charly.yml` AND
+  the skill body in `.agents/skills/layer-nerdctl/SKILL.md` together. The
+  `layer-nerdctl-skill:` node carries ROUTING only; the file is the source of
+  record for the skill's prose, so a behaviour change not mirrored there leaves
+  the corpus stale.
 - The pinned `NERDCTL_FULL_VERSION` and its sha256 verification are the contract;
   the native-package distro arms (arch/alpine) short-circuit the tarball step —
   preserve that split.

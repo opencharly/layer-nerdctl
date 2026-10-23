@@ -3,7 +3,7 @@
 nerdctl (the containerd CLI) plus the full rootless containerd + buildkit + CNI
 stack, as a standalone OpenCharly layer repo.
 
-Composed by a box that wants the opt-in `engine: nerdctl` engine. On
+Composed by a box that wants the opt-in `engine: containerd` engine. On
 Arch/CachyOS/Omarchy and Alpine the candy uses native distro packages; on Fedora,
 Debian, and Ubuntu it installs the pinned, **fatally** sha256-verified
 `nerdctl-full` tarball (which supplies nerdctl + containerd +
@@ -24,8 +24,11 @@ containerd/buildkit user units.
 | Nested-pod posture | userns-scoped `cap_add: ALL`, `/dev/fuse`, `/dev/net/tun`, `unmask=/proc/*` |
 | Service / port | none |
 
-The engine word is served by `opencharly/plugin-nerdctl` (out-of-process) or
-compiled in; every engine op delegates to `container.InvokeEngineOp("nerdctl", …)`.
+The `engine: containerd` word is served by `opencharly/plugin-nerdctl`
+(out-of-process) or compiled in; every engine op delegates to
+`container.InvokeEngineOp("containerd", …)`. `containerd` is the engine word;
+`nerdctl` is the CLI binary that drives it (the spec-owned `#EngineBinaries` map
+holds `containerd → nerdctl`).
 
 ## Rootless networking
 
@@ -67,8 +70,9 @@ my-nested-box:
 
 ## Related
 
-- Owning skill: `/charly-distros:layer-nerdctl` — the nerdctl engine, the
-  `layer-nerdctl` candy, the rootless checklist, and `engine: nerdctl` deploys.
+- Owning skill: `/charly-distros:layer-nerdctl` — the containerd engine (driven
+  through the nerdctl CLI), the `layer-nerdctl` candy, the rootless checklist,
+  and `engine: containerd` deploys.
 - `/charly-internals:plugin-nerdctl` — the out-of-tree engine plugin.
 - `/charly-image:layer` — candy authoring reference.
 - [`opencharly/charly`](https://github.com/opencharly/charly) — the charly CLI and image builder
