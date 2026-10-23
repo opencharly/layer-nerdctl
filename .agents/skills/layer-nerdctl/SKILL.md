@@ -3,10 +3,10 @@ name: layer-nerdctl
 description: 'nerdctl (containerd CLI) + the rootless containerd/buildkit/CNI stack
   — native Arch/Alpine packages, the pinned FATALLY sha256-verified nerdctl-full tarball
   on Fedora/Debian/Ubuntu, nerdctl.toml with namespace=default, the charly CNI conflist,
-  the written rootless containerd/buildkit user units, and the CONTAINERD.md §2/§4
+  the written rootless containerd/buildkit user units, the CONTAINERD.md §2/§4
   checklist (uidmap helpers, subuid/subgid, delegation, /dev/fuse, user D-Bus,
-  slirp4netns). Use when working with the nerdctl engine, the layer-nerdctl candy, or
-  engine: nerdctl deploys.'
+  slirp4netns), and the nested-pod posture. Use when working with the nerdctl engine,
+  the layer-nerdctl candy, or engine: nerdctl deploys.'
 ---
 
 # layer-nerdctl
